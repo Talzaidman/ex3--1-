@@ -8,7 +8,7 @@ import matplotlib.patches as patches
 
 
 # change IDs to your IDs.
-ID1 = "123456789"
+ID1 = "318452364"
 ID2 = "987654321"
 
 ID = "HW3_{0}_{1}".format(ID1, ID2)
@@ -41,8 +41,15 @@ def predict_particles(s_prior: np.ndarray) -> np.ndarray:
     """
     s_prior = s_prior.astype(float)
     state_drifted = s_prior
-    """ DELETE THE LINE ABOVE AND:
-    INSERT YOUR CODE HERE."""
+    # Add random noise to each state component for all particles
+    # Position noise (x, y)
+    state_drifted[0:2, :] += np.random.normal(0, 1, (2, N))
+    
+    # Size noise (width, height)
+    state_drifted[2:4, :] += np.random.normal(0, 1, (2, N))
+    
+    # Velocity noise (vx, vy) 
+    state_drifted[4:6, :] += np.random.normal(0, 1, (2, N))
     state_drifted = state_drifted.astype(int)
     return state_drifted
 
