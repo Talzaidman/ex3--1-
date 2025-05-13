@@ -42,6 +42,7 @@ def predict_particles(s_prior: np.ndarray) -> np.ndarray:
     s_prior = s_prior.astype(float)
     # Add random noise to each state component for all particles
     # Position noise (x, y)
+    state_drifted = s_prior.copy()
     state_drifted[0:2, :] += np.random.normal(0, 1, (2, N))
     
     # Size noise (width, height)
@@ -65,9 +66,28 @@ def compute_normalized_histogram(image: np.ndarray, state: np.ndarray) -> np.nda
     """
     state = np.floor(state)
     state = state.astype(int)
+    # Extract rectangle parameters from state
+    xc, yc = state[0], state[1]  # center coordinates
+    width, height = state[2], state[3]  # half width/height
+    
+    # Calculate rectangle boundaries
+    x_min = max(0, xc - width)
+    x_max = min(image.shape[1], xc + width)
+    y_min = max(0, yc - height) 
+    y_max = min(image.shape[0], yc + height)
+    
+    # Extract sub-image
+    sub_image = image[y_min:y_max, x_min:x_max]
+    
+    # Quantize from 8 bits (0-255) to 4 bits (0-15)
+    quantized = (sub_image // 16).astype(np.int32)
+    
+    # Compute histogram
     hist = np.zeros((16, 16, 16))
-    """ DELETE THE LINE ABOVE AND:
-        INSERT YOUR CODE HERE."""
+    for i in range(sub_image.shape[0]):
+        for j in range(sub_image.shape[1]):
+            r, g, b = quantized[i, j]
+            hist[r, g, b] += 1
     hist = np.reshape(hist, 16 * 16 * 16)
 
     # normalize
@@ -104,9 +124,11 @@ def bhattacharyya_distance(p: np.ndarray, q: np.ndarray) -> float:
     Return:
         distance: float. The Bhattacharyya Distance.
     """
-    distance = 0
-    """ DELETE THE LINE ABOVE AND:
-        INSERT YOUR CODE HERE."""
+    # Calculate Bhattacharyya coefficient
+    bc = np.sum(np.sqrt(p * q))
+    
+    # Calculate Bhattacharyya distance
+    distance = -np.log(bc)
     return distance
 
 
@@ -142,6 +164,21 @@ def show_particles(image: np.ndarray, state: np.ndarray, W: np.ndarray, frame_in
     return frame_index_to_mean_state, frame_index_to_max_state
 
 
+def calc_weights_CDFS(image, particles_list, true_histogram):
+    weights = list()
+    for column in particles_list.T:
+        particle_histogram = compute_normalized_histogram(image, column)
+        weights.append(bhattacharyya_distance(particle_histogram, true_histogram))
+
+    weights = np.array(weights)
+    weights /= np.sum(weights)
+
+    C = [0 for i in range(len(weights))]
+    C[0] = weights[0]
+    for i in range(1, len(weights)):
+        C[i] = weights[i] + C[i - 1]
+    return C, weights
+
 def main():
     state_at_first_frame = np.matlib.repmat(s_initial, N, 1).T
     S = predict_particles(state_at_first_frame)
@@ -154,7 +191,7 @@ def main():
 
     # COMPUTE NORMALIZED WEIGHTS (W) AND PREDICTOR CDFS (C)
     # YOU NEED TO FILL THIS PART WITH CODE:
-    """INSERT YOUR CODE HERE."""
+    C, W = calc_weights_CDFS(image, S, q)
 
     images_processed = 1
 
@@ -179,7 +216,7 @@ def main():
 
         # COMPUTE NORMALIZED WEIGHTS (W) AND PREDICTOR CDFS (C)
         # YOU NEED TO FILL THIS PART WITH CODE:
-        """INSERT YOUR CODE HERE."""
+        C, W = calc_weights_CDFS(image, S, q)
 
         # CREATE DETECTOR PLOTS
         images_processed += 1
