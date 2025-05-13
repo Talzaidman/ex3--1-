@@ -40,7 +40,6 @@ def predict_particles(s_prior: np.ndarray) -> np.ndarray:
         state_drifted: np.ndarray. The prior state after drift (applying the motion model) and adding the noise.
     """
     s_prior = s_prior.astype(float)
-    state_drifted = s_prior
     # Add random noise to each state component for all particles
     # Position noise (x, y)
     state_drifted[0:2, :] += np.random.normal(0, 1, (2, N))
