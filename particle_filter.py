@@ -40,16 +40,31 @@ def predict_particles(s_prior: np.ndarray) -> np.ndarray:
         state_drifted: np.ndarray. The prior state after drift (applying the motion model) and adding the noise.
     """
     s_prior = s_prior.astype(float)
-    # Add random noise to each state component for all particles
-    # Position noise (x, y)
     state_drifted = s_prior.copy()
-    state_drifted[0:2, :] += np.random.normal(0, 1, (2, N))
-    
-    # Size noise (width, height)
-    state_drifted[2:4, :] += np.random.normal(0, 1, (2, N))
-    
-    # Velocity noise (vx, vy) 
-    state_drifted[4:6, :] += np.random.normal(0, 1, (2, N))
+
+    # Check if this is our first prediction call
+    first_prediction = not getattr(predict_particles, "initialized", False)
+
+    if first_prediction:
+        # Initial frame: spread particles around starting position
+        startup_noise = np.random.normal(0, 3, s_prior.shape)  # Try 5 and 7 if not good enough
+        state_drifted = state_drifted + startup_noise
+        # Set flag to indicate we've been initialized
+        predict_particles.initialized = True
+    else:
+        # Subsequent frames: apply motion model then add uncertainty
+
+        # Move particles based on their velocities
+        state_drifted[0, :] += state_drifted[4, :]  # x position update
+        state_drifted[1, :] += state_drifted[5, :]  # y position update
+
+        # Add random noise to account for motion uncertainty
+        location_noise = np.random.normal(0, 3, (2, s_prior.shape[1]))  # Try 3 or 4 not good enough
+        speed_noise = np.random.normal(0, 0.5, (2, s_prior.shape[1]))  # Try 1-1.5 if not good enough
+
+        state_drifted[0:2, :] += location_noise  # Add noise to x,y positions
+        state_drifted[4:6, :] += speed_noise  # Add noise to velocities
+
     state_drifted = state_drifted.astype(int)
     return state_drifted
 
@@ -66,32 +81,42 @@ def compute_normalized_histogram(image: np.ndarray, state: np.ndarray) -> np.nda
     """
     state = np.floor(state)
     state = state.astype(int)
-    # Extract rectangle parameters from state
-    xc, yc = state[0], state[1]  # center coordinates
-    width, height = state[2], state[3]  # half width/height
-    
-    # Calculate rectangle boundaries
-    x_min = max(0, xc - width)
-    x_max = min(image.shape[1], xc + width)
-    y_min = max(0, yc - height) 
-    y_max = min(image.shape[0], yc + height)
-    
-    # Extract sub-image
-    sub_image = image[y_min:y_max, x_min:x_max]
-    
-    # Quantize from 8 bits (0-255) to 4 bits (0-15)
-    quantized = (sub_image // 16).astype(np.int32)
-    
-    # Compute histogram
     hist = np.zeros((16, 16, 16))
-    for i in range(sub_image.shape[0]):
-        for j in range(sub_image.shape[1]):
-            r, g, b = quantized[i, j]
-            hist[r, g, b] += 1
+
+    # Extract rectangle parameters from state vector
+    center_x, center_y = state[0], state[1]
+    half_width, half_height = state[2], state[3]
+
+    # Calculate patch boundaries with image bounds checking
+    left_edge = max(0, center_x - half_width)
+    right_edge = min(image.shape[1], center_x + half_width)
+    top_edge = max(0, center_y - half_height)
+    bottom_edge = min(image.shape[0], center_y + half_height)
+
+    # Extract the region of interest
+    image_patch = image[top_edge:bottom_edge, left_edge:right_edge]
+
+    # Handle empty patch case
+    if image_patch.size == 0:
+        hist[:] = 1.0 / (16 ** 3)  # Set uniform distribution
+    else:
+        # Quantize colors from 8-bit to 4-bit and compute histogram
+        quantized_colors = (image_patch // 16).reshape(-1, 3)
+        color_histogram, _ = np.histogramdd(
+            quantized_colors,
+            bins=(16, 16, 16),
+            range=((0, 16), (0, 16), (0, 16))
+        )
+        hist = color_histogram
+
     hist = np.reshape(hist, 16 * 16 * 16)
 
-    # normalize
-    hist = hist/sum(hist)
+    # normalize safely
+    total_pixels = hist.sum()
+    if total_pixels > 0:
+        hist = hist / total_pixels
+    else:
+        hist = np.ones_like(hist) / (16 ** 3)
 
     return hist
 
