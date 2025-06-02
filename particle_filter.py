@@ -9,7 +9,7 @@ import matplotlib.patches as patches
 
 # change IDs to your IDs.
 ID1 = "318452364"
-ID2 = "987654321"
+ID2 = "207767021"
 
 ID = "HW3_{0}_{1}".format(ID1, ID2)
 RESULTS = 'results'
@@ -47,7 +47,7 @@ def predict_particles(s_prior: np.ndarray) -> np.ndarray:
 
     if first_prediction:
         # Initial frame: spread particles around starting position
-        startup_noise = np.random.normal(0, 3, s_prior.shape)  # Try 5 and 7 if not good enough
+        startup_noise = np.random.normal(0, 5, s_prior.shape)  # Try 5 and 7 if not good enough
         state_drifted = state_drifted + startup_noise
         # Set flag to indicate we've been initialized
         predict_particles.initialized = True
@@ -60,7 +60,7 @@ def predict_particles(s_prior: np.ndarray) -> np.ndarray:
 
         # Add random noise to account for motion uncertainty
         location_noise = np.random.normal(0, 3, (2, s_prior.shape[1]))  # Try 3 or 4 not good enough
-        speed_noise = np.random.normal(0, 0.5, (2, s_prior.shape[1]))  # Try 1-1.5 if not good enough
+        speed_noise = np.random.normal(0, 1, (2, s_prior.shape[1]))  # Try 1-1.5 if not good enough
 
         state_drifted[0:2, :] += location_noise  # Add noise to x,y positions
         state_drifted[4:6, :] += speed_noise  # Add noise to velocities
@@ -133,10 +133,25 @@ def sample_particles(previous_state: np.ndarray, cdf: np.ndarray) -> np.ndarray:
     Return:
         s_next: np.ndarray. Sampled particles. shape: (6, N)
     """
-    S_next = np.zeros(previous_state.shape)
-    """ DELETE THE LINE ABOVE AND:
-        INSERT YOUR CODE HERE."""
-    return S_next
+
+    # Initialize output array with same shape as input
+    s_next = np.zeros(previous_state.shape)
+
+    # Resample each particle position
+    for particle_idx in range(previous_state.shape[1]):
+        # Generate random value between 0 and 1
+        random_value = np.random.uniform(0, 1)
+
+        # Find first CDF entry that exceeds our random value
+        selected_idx = np.searchsorted(cdf, random_value)
+
+        # Ensure we don't exceed array bounds
+        selected_idx = min(selected_idx, previous_state.shape[1] - 1)
+
+        # Copy the selected particle's state
+        s_next[:, particle_idx] = previous_state[:, selected_idx]
+
+    return s_next
 
 
 def bhattacharyya_distance(p: np.ndarray, q: np.ndarray) -> float:
@@ -161,48 +176,45 @@ def show_particles(image: np.ndarray, state: np.ndarray, W: np.ndarray, frame_in
                   frame_index_to_mean_state: dict, frame_index_to_max_state: dict,
                   ) -> tuple:
     fig, ax = plt.subplots(1)
-    image = image[:,:,::-1]
+    image = image[:,:,::-1]  # Convert BGR to RGB for matplotlib
     plt.imshow(image)
     plt.title(ID + " - Frame mumber = " + str(frame_index))
 
-    # Avg particle box
-    (x_avg, y_avg, w_avg, h_avg) = (0, 0, 0, 0)
-    """ DELETE THE LINE ABOVE AND:
-        INSERT YOUR CODE HERE."""
+    # Avg particle box-plot in green
+    # Calculate weighted average particle position
+    x_avg = np.sum(state[0, :] * W)
+    y_avg = np.sum(state[1, :] * W)
+    w_avg = 2 * np.sum(state[2, :] * W)  # Convert half-width to full width
+    h_avg = 2 * np.sum(state[3, :] * W)  # Convert half-height to full height
 
+    # Convert center coordinates to top-left corner for rectangle
+    x_avg = x_avg - w_avg / 2
+    y_avg = y_avg - h_avg / 2
 
     rect = patches.Rectangle((x_avg, y_avg), w_avg, h_avg, linewidth=1, edgecolor='g', facecolor='none')
     ax.add_patch(rect)
 
-    # calculate Max particle box
-    (x_max, y_max, w_max, h_max) = (0, 0, 0, 0)
-    """ DELETE THE LINE ABOVE AND:
-        INSERT YOUR CODE HERE."""
+    # calculate Max particle box-plot in red
+    # Find best particle (highest weight)
+    max_particle_idx = np.argmax(W)
+    x_max = state[0, max_particle_idx]
+    y_max = state[1, max_particle_idx]
+    w_max = 2 * state[2, max_particle_idx]
+    h_max = 2 * state[3, max_particle_idx]
+
+    # Convert center coordinates to top-left corner
+    x_max = x_max - w_max / 2
+    y_max = y_max - h_max / 2
 
     rect = patches.Rectangle((x_max, y_max), w_max, h_max, linewidth=1, edgecolor='r', facecolor='none')
     ax.add_patch(rect)
-    plt.show(block=False)
+    plt.show(block=False) # Plot while allowing the program keep running
 
     fig.savefig(os.path.join(RESULTS, ID + "-" + str(frame_index) + ".png"))
     frame_index_to_mean_state[frame_index] = [float(x) for x in [x_avg, y_avg, w_avg, h_avg]]
     frame_index_to_max_state[frame_index] = [float(x) for x in [x_max, y_max, w_max, h_max]]
     return frame_index_to_mean_state, frame_index_to_max_state
 
-
-def calc_weights_CDFS(image, particles_list, true_histogram):
-    weights = list()
-    for column in particles_list.T:
-        particle_histogram = compute_normalized_histogram(image, column)
-        weights.append(bhattacharyya_distance(particle_histogram, true_histogram))
-
-    weights = np.array(weights)
-    weights /= np.sum(weights)
-
-    C = [0 for i in range(len(weights))]
-    C[0] = weights[0]
-    for i in range(1, len(weights)):
-        C[i] = weights[i] + C[i - 1]
-    return C, weights
 
 def main():
     state_at_first_frame = np.matlib.repmat(s_initial, N, 1).T
@@ -215,8 +227,12 @@ def main():
     q = compute_normalized_histogram(image, s_initial)
 
     # COMPUTE NORMALIZED WEIGHTS (W) AND PREDICTOR CDFS (C)
-    # YOU NEED TO FILL THIS PART WITH CODE:
-    C, W = calc_weights_CDFS(image, S, q)
+    W = np.zeros(N)
+    for i in range(N):
+        p = compute_normalized_histogram(image, S[:, i])
+        W[i] = np.exp(-9 * bhattacharyya_distance(p, q))
+    W = W / np.sum(W)
+    C = np.cumsum(W)
 
     images_processed = 1
 
@@ -240,8 +256,12 @@ def main():
         S = predict_particles(S_next_tag)
 
         # COMPUTE NORMALIZED WEIGHTS (W) AND PREDICTOR CDFS (C)
-        # YOU NEED TO FILL THIS PART WITH CODE:
-        C, W = calc_weights_CDFS(image, S, q)
+        W = np.zeros(N)
+        for i in range(N):
+            p = compute_normalized_histogram(current_image, S[:, i])
+            W[i] = np.exp(-9 * bhattacharyya_distance(p, q))
+        W = W / np.sum(W)
+        C = np.cumsum(W)
 
         # CREATE DETECTOR PLOTS
         images_processed += 1
