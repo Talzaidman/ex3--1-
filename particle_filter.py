@@ -47,7 +47,7 @@ def predict_particles(s_prior: np.ndarray) -> np.ndarray:
 
     if first_prediction:
         # Initial frame: spread particles around starting position
-        startup_noise = np.random.normal(0, 5, s_prior.shape)  # Try 5 and 7 if not good enough
+        startup_noise = np.random.normal(0, 6, s_prior.shape)
         state_drifted = state_drifted + startup_noise
         # Set flag to indicate we've been initialized
         predict_particles.initialized = True
@@ -59,8 +59,8 @@ def predict_particles(s_prior: np.ndarray) -> np.ndarray:
         state_drifted[1, :] += state_drifted[5, :]  # y position update
 
         # Add random noise to account for motion uncertainty
-        location_noise = np.random.normal(0, 3, (2, s_prior.shape[1]))  # Try 3 or 4 not good enough
-        speed_noise = np.random.normal(0, 1, (2, s_prior.shape[1]))  # Try 1-1.5 if not good enough
+        location_noise = np.random.normal(0, 4, (2, s_prior.shape[1]))
+        speed_noise = np.random.normal(0, 2, (2, s_prior.shape[1]))
 
         state_drifted[0:2, :] += location_noise  # Add noise to x,y positions
         state_drifted[4:6, :] += speed_noise  # Add noise to velocities
